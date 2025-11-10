@@ -12,3 +12,9 @@ Route::prefix('auth')->group(function (): void {
         Route::post('logout', [AuthController::class, 'logout']);
     });
 });
+
+Route::fallback(fn () => response()->json([
+    'failed' => true,
+    'error' => ['code' => 404],
+    'message' => 'Маршрут не найден.',
+], 404));

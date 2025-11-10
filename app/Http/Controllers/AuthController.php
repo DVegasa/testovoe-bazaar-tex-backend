@@ -2,24 +2,26 @@
 
 namespace App\Http\Controllers;
 
+use App\Http\Requests\Auth\LoginRequest;
+use App\Http\Requests\Auth\LogoutRequest;
+use App\Http\Requests\Auth\MeRequest;
+use App\Http\Requests\Auth\RegisterRequest;
+use App\Http\Resources\Auth\TokenResource;
+use App\Http\Resources\MessageResource;
+use App\Http\Resources\UserResource;
 use App\Models\User;
 use Illuminate\Http\JsonResponse;
-use Illuminate\Http\Request;
 use Illuminate\Support\Facades\Hash;
-use Illuminate\Validation\ValidationException;
+use App\Exceptions\App\AppValidationException;
 
 class AuthController extends Controller
 {
     /**
      * Handle user registration.
      */
-    public function register(Request $request): JsonResponse
+    public function register(RegisterRequest $request): JsonResponse
     {
-        $validated = $request->validate([
-            'name' => ['required', 'string', 'max:255'],
-            'email' => ['required', 'string', 'email', 'max:255', 'unique:users,email'],
-            'password' => ['required', 'string', 'min:8', 'confirmed'],
-        ]);
+        $validated = $request->validated();
 
         $user = User::query()->create([
             'name' => $validated['name'],
@@ -29,60 +31,53 @@ class AuthController extends Controller
 
         $token = $user->createToken('api')->plainTextToken;
 
-        return response()->json([
+        return TokenResource::make([
             'user' => $user,
             'token' => $token,
-        ], 201);
+        ])
+            ->response()
+            ->setStatusCode(201);
     }
 
     /**
      * Handle user login.
      *
-     * @throws ValidationException
+     * @throws AppValidationException
      */
-    public function login(Request $request): JsonResponse
+    public function login(LoginRequest $request): JsonResponse
     {
-        $credentials = $request->validate([
-            'email' => ['required', 'string', 'email'],
-            'password' => ['required', 'string'],
-        ]);
+        $credentials = $request->validated();
 
         /** @var User|null $user */
         $user = User::query()->where('email', $credentials['email'])->first();
 
         if (! $user || ! Hash::check($credentials['password'], $user->password)) {
-            throw ValidationException::withMessages([
-                'email' => ['Неверная пара email/пароль.'],
-            ]);
+            throw new AppValidationException('Неверный логин/пароль');
         }
 
         $token = $user->createToken('api')->plainTextToken;
 
-        return response()->json([
+        return TokenResource::make([
             'user' => $user,
             'token' => $token,
-        ]);
+        ])->response();
     }
 
     /**
      * Return authenticated user.
      */
-    public function me(Request $request): JsonResponse
+    public function me(MeRequest $request): JsonResponse
     {
-        return response()->json([
-            'user' => $request->user(),
-        ]);
+        return UserResource::make($request->user())->response();
     }
 
     /**
      * Revoke current access token.
      */
-    public function logout(Request $request): JsonResponse
+    public function logout(LogoutRequest $request): JsonResponse
     {
         $request->user()->currentAccessToken()?->delete();
 
-        return response()->json([
-            'message' => 'Вы успешно вышли из системы.',
-        ]);
+        return MessageResource::make('Вы успешно вышли из системы.')->response();
     }
 }
